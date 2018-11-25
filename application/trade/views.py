@@ -61,3 +61,11 @@ def save_to_wishes(isbn):
             db.session.add(wish)
 
     return redirect(url_for('book.book_detail', isbn=isbn))
+
+
+@trade.route('/wish/satisfy_wish')
+@login_required
+def satisfy_wish():
+    pass
+
+

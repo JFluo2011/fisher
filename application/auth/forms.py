@@ -1,8 +1,12 @@
 from wtforms import StringField, PasswordField, Form
-from wtforms.validators import Length, DataRequired, Email
+from wtforms.validators import Length, DataRequired, Email, EqualTo
 from wtforms.validators import ValidationError
 
 from ..models import User
+
+
+class EmailForm(Form):
+    email = StringField(validators=[Length(min=8, max=64), DataRequired(), Email(message='invalid email address')])
 
 
 class RegisterForm(Form):
@@ -22,10 +26,21 @@ class RegisterForm(Form):
             raise ValidationError('nickname has already been taken')
 
 
-class LoginForm(Form):
-    email = StringField(validators=[Length(min=8, max=64), DataRequired(), Email(message='invalid email address')])
+class LoginForm(EmailForm):
     password = PasswordField(validators=[
         Length(6, 32),
         DataRequired(message='password can\'t be blank and must contain 6-32 characters')
+    ])
+
+
+class ResetPasswordForm(Form):
+    password1 = PasswordField(validators=[
+        Length(6, 32),
+        DataRequired(message='password can\'t be blank and must contain 6-32 characters'),
+        EqualTo('password2', message='password does not match the confirm password')
+    ])
+    password2 = PasswordField(validators=[
+        Length(6, 32),
+        DataRequired()
     ])
 

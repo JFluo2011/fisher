@@ -9,6 +9,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
 from flask_login import LoginManager
 from flask import current_app
+from itsdangerous import TimedJSONWebSignatureSerializer
 
 from .libs.helper import keyword_is_isbn
 from .spider.fisher_book import FisherBook
@@ -112,6 +113,29 @@ class User(UserMixin, Base):
             return True
         else:
             return False
+
+    def gen_token(self, expire=600):
+        s = TimedJSONWebSignatureSerializer(current_app.config['SECRET_KEY'], expires_in=expire)
+        token = s.dumps({'id': self.id})
+        return token.decode('utf-8')
+
+    @staticmethod
+    def reset_password(token, new_password):
+        s = TimedJSONWebSignatureSerializer(current_app.config['SECRET_KEY'])
+        try:
+            data = s.loads(token.encode('utf-8'))
+        except:
+            return False
+
+        uid = data['id']
+        with db.auto_commit():
+            user = User.query.get(uid)
+            if user is None:
+                return False
+
+            user.password = new_password
+
+        return True
 
 
 class Gift(Base):

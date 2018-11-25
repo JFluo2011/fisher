@@ -2,9 +2,10 @@ from flask import render_template, request, flash, redirect, url_for
 from flask_login import login_user, current_user, logout_user, login_required
 
 from . import auth_blueprint as auth
-from .forms import RegisterForm, LoginForm
+from .forms import RegisterForm, LoginForm, EmailForm, ResetPasswordForm
 from ..models import User
 from .. import db
+from ..libs.email import send_mail
 
 
 @auth.route('/login', methods=['GET', 'POST'])
@@ -54,7 +55,28 @@ def change_password():
     pass
 
 
-@auth.route('/forget_password_request')
+@auth.route('/reset/password', methods=['GET', 'POST'])
 def forget_password_request():
-    pass
+    form = EmailForm(request.form)
+    if request.method == 'POST':
+        if form.validate():
+            email = form.email.data
+            user = User.query.filter_by(email=email).first_or_404()
+            send_mail(email, 'reset user password', 'email/reset_password.html', user=user, token=user.gen_token())
+            flash(f'We\'ll send an email to the {email}, open it up to reset your password')
+
+    return render_template('auth/forget_password_request.html', form=form)
+
+
+@auth.route('/reset/password/<token>', methods=['GET', 'POST'])
+def forget_password(token):
+    form = ResetPasswordForm(request.form)
+    if (request.method == 'POST') and form.validate():
+        if User.reset_password(token, form.password1.data):
+            flash('your password has been reset successfully')
+            return redirect(url_for('auth.login'))
+        else:
+            flash('your password has been reset failed')
+
+    return render_template('auth/forget_password.html', form=form)
 
