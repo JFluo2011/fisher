@@ -18,7 +18,7 @@ class TradeInfo:
 
     @staticmethod
     def _make_trade(trade):
-        date = trade.get_format_create_time()
+        date = trade.create_datetime
         if date:
             date = date.strftime('%Y-%m-%d')
         else:
@@ -44,5 +44,6 @@ class MyTrades:
         for trade_count in self._trade_count_lst:
             if trade.isbn == trade_count.isbn:
                 count = trade_count.count
+                break
 
         return MyTrade(trade.id, BookViewModel(trade.book), count)

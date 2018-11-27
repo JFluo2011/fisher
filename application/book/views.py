@@ -1,5 +1,5 @@
-from flask import request, render_template, flash, current_app, redirect, url_for
-from flask_login import login_required, current_user
+from flask import request, render_template, flash
+from flask_login import current_user
 
 from .forms import SearchForm
 from ..spider.fisher_book import FisherBook
@@ -51,43 +51,9 @@ def book_detail(isbn):
                            wishes=wishes, has_in_gifts=has_in_gifts, has_in_wishes=has_in_wishes)
 
 
-@book.route('/book/redraw_from_gifts')
-def redraw_from_gifts():
-    pass
-
-
-@book.route('/book/redraw_from_wish')
-def redraw_from_wish():
-    pass
-
-
 @book.route('/index')
 def index():
     recent_gift = Gift.recent()
     books = [BookViewModel(gift.book) for gift in recent_gift]
     return render_template('index.html', books=books)
 
-
-@book.route('/book/pending')
-def pending():
-    pass
-
-
-@book.route('/book/mailed_drift')
-def mailed_drift():
-    pass
-
-
-@book.route('/book/reject_drift')
-def reject_drift():
-    pass
-
-
-@book.route('/book/redraw_drift')
-def redraw_drift():
-    pass
-
-
-@book.route('/book/send_drift')
-def send_drift():
-    pass

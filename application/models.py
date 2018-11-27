@@ -13,6 +13,7 @@ from itsdangerous import TimedJSONWebSignatureSerializer
 
 from .libs.helper import keyword_is_isbn
 from .spider.fisher_book import FisherBook
+from .libs.enums import PendingStatus
 
 
 login_manager = LoginManager()
@@ -54,9 +55,13 @@ class Base(db.Model):
                 continue
             setattr(self, key, value)
 
-    def get_format_create_time(self):
+    @property
+    def create_datetime(self):
         if self.create_time:
             return datetime.fromtimestamp(self.create_time)
+
+    def delete(self):
+        self.status = 0
 
 
 class Book(Base):
@@ -97,6 +102,15 @@ class User(UserMixin, Base):
     def password(self, password):
         self._hash_password = generate_password_hash(password)
 
+    @property
+    def summary(self):
+        return {
+            'nickname': self.nickname,
+            'beans': self.beans,
+            'email': self.email,
+            'seed_receive': str(self.send_counter) + '/' + str(self.receive_counter),
+        }
+
     def check_password(self, password):
         return check_password_hash(self._hash_password, password)
 
@@ -113,6 +127,14 @@ class User(UserMixin, Base):
             return True
         else:
             return False
+
+    def can_send_drift(self):
+        if self.beans < 1:
+            return False
+
+        success_gift_count = Gift.query.filter_by(uid=self.id, launched=True).count()
+        success_receive_count = Drift.query.filter_by(requester_id=self.id, pending=PendingStatus.Success).count()
+        return (success_receive_count // 2) <= success_gift_count
 
     def gen_token(self, expire=600):
         s = TimedJSONWebSignatureSerializer(current_app.config['SECRET_KEY'], expires_in=expire)
@@ -143,13 +165,15 @@ class Gift(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     launched = Column(Boolean, default=False)
     user = relationship('User')
-    beans = relationship('User')
     uid = Column(Integer, ForeignKey('users.id'))
     # 目前都是请求的api，数据库中并没有值，所以直接用isbn来关联，而不是外键
     isbn = Column(String(15), nullable=False)
 
     # book = relationship('User')
     # bid = Column(Integer, ForeignKey('books.id'))
+
+    def is_yourself_gift(self, uid):
+        return self.uid == uid
 
     @property
     def book(self):
@@ -214,6 +238,41 @@ class Wish(Base):
             Gift.launched == False, Gift.isbn.in_(isbn_lst), Gift.status == 1).group_by(Gift.isbn).all()
 
         return [EachGiftWishCount(element[0], element[1]) for element in count_lst]
+
+
+class Drift(Base):
+    id = Column(Integer, primary_key=True)
+
+    # 邮寄信息
+    recipient_name = Column(String(20), nullable=False)
+    address = Column(String(100), nullable=False)
+    mobile = Column(String(20), nullable=False)
+    message = Column(String(200))
+
+    # 书籍信息
+    book_isbn = Column(String(13))
+    book_title = Column(String(50))
+    book_author = Column(String(30))
+    book_img = Column(String(50))
+
+    # 请求者信息
+    requester_id = Column(Integer)
+    requester_nickname = Column(String(20))
+
+    # 赠送者信息
+    presenter_id = Column(Integer)
+    gift_id = Column(Integer)
+    presenter_nickname = Column(String(20))
+
+    _pending = Column('pending', SmallInteger, default=1)
+
+    @property
+    def pending(self):
+        return PendingStatus(self._pending)
+
+    @pending.setter
+    def pending(self, status):
+        self._pending = status.value
 
 
 @login_manager.user_loader

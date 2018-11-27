@@ -36,9 +36,11 @@ def register_blueprint(app):
     from .book import book_blueprint
     from .auth import auth_blueprint
     from .trade import trade_blueprint
+    from .drift import drift_blueprint
     app.register_blueprint(book_blueprint)
     app.register_blueprint(auth_blueprint)
     app.register_blueprint(trade_blueprint)
+    app.register_blueprint(drift_blueprint)
 
 
 

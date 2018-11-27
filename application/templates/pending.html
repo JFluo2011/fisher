@@ -22,12 +22,12 @@
                         <div><span>作者：</span><span>{{ drift.book_author }}</span></div>
                         <div><span>发起日期：</span><span>{{ drift.date }}</span></div>
                         <div>
-                            {% if drift.you_are == 'requester' %}
+                            {% if drift.role == 'requester' %}
                                 <span>向他请求：</span>
                             {% else %}
                                 <span>请求者：</span>
                             {% endif %}
-                            <span>{{ drift.operator }}</span>
+                            <span>{{ drift.target_name }}</span>
                         </div>
                         <div><span>状态：</span><span
                                 class="status-color">{{ drift.status_str }}</span></div>
@@ -37,19 +37,19 @@
                         <div><span>联系电话：</span><span>{{ drift.mobile }}</span></div>
                     </div>
                     <div class="col-md-2 flex-vertical">
-                        {% if drift.you_are == 'gifter' %}
+                        {% if drift.role == 'presenter' %}
                             {% if drift.status.value == 1 %}
-                                <a href="{{ url_for('book.mailed_drift', did=drift.drift_id) }}">
+                                <a href="{{ url_for('drift.mailed_drift', did=drift.drift_id) }}">
                                     <span class="btn-normal">已邮寄</span>
                                 </a>
-                                <a style="margin-top:20px;" href="{{ url_for('book.reject_drift', did=drift.drift_id) }}">
+                                <a style="margin-top:20px;" href="{{ url_for('drift.reject_drift', did=drift.drift_id) }}">
                                     <span class="btn-shadow">拒&nbsp;&nbsp;&nbsp;绝</span>
                                 </a>
                             {% endif %}
                         {% endif %}
-                        {% if drift.you_are == 'requester' %}
+                        {% if drift.role == 'requester' %}
                             {% if drift.status.value == 1 %}
-                                <a href="{{ url_for('book.redraw_drift', did=drift.drift_id) }}">
+                                <a href="{{ url_for('drift.redraw_drift', did=drift.drift_id) }}">
                                         <span class="btn-normal">撤 销</span>
                                 </a>
                             {% endif %}
@@ -58,7 +58,7 @@
                 </div>
                 <div style="margin-top:20px;" class="row message-container">
                     <div class="col-md-12">
-                        {% if drift.you_are == 'receiver' %}
+                        {% if drift.role == 'receiver' %}
                             {% set message_flag = '他的留言：' %}
                         {% else %}
                             {% set message_flag = '你的留言：' %}
