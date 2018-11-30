@@ -2,25 +2,23 @@ from contextlib import contextmanager
 from datetime import datetime
 from collections import namedtuple
 
-from sqlalchemy import Column, Integer, String, Boolean, Float, ForeignKey, SmallInteger, desc, func
-from sqlalchemy.orm import relationship
+from flask import current_app, flash
+from sqlalchemy.ext.declarative import declared_attr
 from flask_sqlalchemy import SQLAlchemy, BaseQuery
+from sqlalchemy import Column, Integer, String, SmallInteger, TEXT, Boolean, Float, ForeignKey, desc, func
+from sqlalchemy.orm import relationship
+from flask_login import UserMixin, LoginManager, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import UserMixin
-from flask_login import LoginManager
-from flask import current_app
 from itsdangerous import TimedJSONWebSignatureSerializer
 
-from .libs.helper import keyword_is_isbn
-from .spider.fisher_book import FisherBook
-from .libs.enums import PendingStatus
+from .utils.enums import PendingStatus
 
 
+EachGoodsCount = namedtuple('EachGiftWishCount', 'count, isbn')
 login_manager = LoginManager()
-EachGiftWishCount = namedtuple('EachGiftWishCount', 'count, isbn')
 
 
-class SubSQLALchemy(SQLAlchemy):
+class SubSQLAlchemy(SQLAlchemy):
     @contextmanager
     def auto_commit(self):
         try:
@@ -32,28 +30,31 @@ class SubSQLALchemy(SQLAlchemy):
 
 
 class SubQuery(BaseQuery):
-    def filter_by(self, **kwargs):
-        if 'status' not in kwargs.keys():
-            kwargs.update({'status': 1})
+    def filter_by(self, use_base=False, **kwargs):
+        if not use_base and ('status' not in kwargs.keys()):
+            kwargs.update({'status': True})
         return super().filter_by(**kwargs)
 
 
-db = SubSQLALchemy(query_class=SubQuery)
+db = SubSQLAlchemy(query_class=SubQuery)
 
 
 class Base(db.Model):
     __abstract__ = True
+    id = Column(Integer, primary_key=True, autoincrement=True)
     create_time = Column('create_time', Integer)
-    status = Column(SmallInteger, default=1)
+    status = Column(Boolean, default=True)
 
     def __init__(self):
         self.create_time = int(datetime.now().timestamp())
 
-    def set_attrs(self, attr_dct):
-        for key, value in attr_dct.items():
-            if (not hasattr(self, key)) or (key == 'id'):
-                continue
-            setattr(self, key, value)
+    def change_status(self):
+        self.status = not self.status
+        if self.status:
+            self.create_time = int(datetime.now().timestamp())
+            flash('添加到清单成功')
+        else:
+            flash('取消成功')
 
     @property
     def create_datetime(self):
@@ -61,27 +62,46 @@ class Base(db.Model):
             return datetime.fromtimestamp(self.create_time)
 
     def delete(self):
-        self.status = 0
+        self.status = False
 
 
 class Book(Base):
     __tablename__ = 'books'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    title = Column(String(50), nullable=False)
-    summary = Column(String(50))
-    author = Column(String(30), default='佚名')
+    id = Column(Integer, primary_key=True, nullable=False)
+    title = Column(String(50), unique=True, nullable=False)
+    # summary = Column(String(1000))
+    summary = Column(TEXT)
+    author = Column(String(100), default='佚名')
     publisher = Column(String(50))
     price = Column(String(50))
     pages = Column(String(50))
-    pubdate = Column(String(1000))
+    pubdate = Column(String(50))
     isbn = Column(String(15), nullable=False, unique=True)
     binding = Column(String(20))
     image = Column(String(50))
 
+    def __init__(self, book):
+        super().__init__()
+        self.id = book['id']
+        self.title = book['title']
+        self.author = '、'.join(book['author'])
+        self.binding = book['binding']
+        self.publisher = book['publisher']
+        self.image = book['image']
+        self.price = book['price'] and str(book['price'])
+        self.pubdate = book['pubdate']
+        self.isbn = book['isbn']
+        self.pages = book['pages']
+        self.summary = book['summary'] or ''
+
+    @property
+    def intro(self):
+        elements = [element for element in [self.author, self.publisher, self.price] if element]
+        return ' / '.join(elements)
+
 
 class User(UserMixin, Base):
     __tablename__ = 'users'
-    id = Column(Integer, primary_key=True, autoincrement=True)
     nickname = Column(String(24), nullable=False)
     phone_number = Column(String(18), unique=True)
     email = Column(String(50), unique=True, nullable=True)
@@ -92,6 +112,10 @@ class User(UserMixin, Base):
     wx_open_id = Column(String(50))
     wx_name = Column(String(32))
     _hash_password = Column('password', String(128), nullable=False)
+
+    # @property
+    # def send_receive(self):
+    #     return '/'.join([str(self.send_counter), str(self.receive_counter)])
 
     @property
     def password(self):
@@ -108,136 +132,122 @@ class User(UserMixin, Base):
             'nickname': self.nickname,
             'beans': self.beans,
             'email': self.email,
-            'seed_receive': str(self.send_counter) + '/' + str(self.receive_counter),
+            'send_receive': str(self.send_counter) + '/' + str(self.receive_counter),
         }
 
-    def check_password(self, password):
-        return check_password_hash(self._hash_password, password)
-
-    def can_save_to_list(self, isbn):
-        if not keyword_is_isbn(isbn):
-            return False
-        book = FisherBook()
-        book.search_by_isbn(isbn)
-        if not book.first:
-            return False
-        gift = Gift.query.filter_by(uid=self.id, isbn=isbn, launched=False).first()
-        wish = Wish.query.filter_by(uid=self.id, isbn=isbn, launched=False).first()
+    def can_save_to_list(self, bid):
+        gift = Gift.query.filter_by(uid=self.id, bid=bid, launched=False).first()
+        wish = Wish.query.filter_by(uid=self.id, bid=bid, launched=False).first()
         if not gift and not wish:
             return True
         else:
             return False
 
-    def can_send_drift(self):
-        if self.beans < 1:
-            return False
-
-        success_gift_count = Gift.query.filter_by(uid=self.id, launched=True).count()
-        success_receive_count = Drift.query.filter_by(requester_id=self.id, pending=PendingStatus.Success).count()
-        return (success_receive_count // 2) <= success_gift_count
+    def check_password(self, password):
+        return check_password_hash(self._hash_password, password)
 
     def gen_token(self, expire=600):
         s = TimedJSONWebSignatureSerializer(current_app.config['SECRET_KEY'], expires_in=expire)
-        token = s.dumps({'id': self.id})
+        token = s.dumps({'email': self.email})
         return token.decode('utf-8')
 
     @staticmethod
-    def reset_password(token, new_password):
+    def parse_token(token):
         s = TimedJSONWebSignatureSerializer(current_app.config['SECRET_KEY'])
         try:
             data = s.loads(token.encode('utf-8'))
         except:
-            return False
+            return {}
+        return data
 
-        uid = data['id']
+    def reset_password(self, new_password):
         with db.auto_commit():
-            user = User.query.get(uid)
-            if user is None:
-                return False
-
-            user.password = new_password
+            self.password = new_password
 
         return True
 
+    def confirm(self):
+        with db.auto_commit():
+            self.confirmed = True
 
-class Gift(Base):
-    __tablename__ = 'gifts'
-    id = Column(Integer, primary_key=True, autoincrement=True)
+
+class Goods(Base):
+    __abstract__ = True
     launched = Column(Boolean, default=False)
-    user = relationship('User')
-    uid = Column(Integer, ForeignKey('users.id'))
-    # 目前都是请求的api，数据库中并没有值，所以直接用isbn来关联，而不是外键
-    isbn = Column(String(15), nullable=False)
+    isbn = Column(String(15), nullable=False, unique=True)
+    # user = relationship('User')
+    # uid = Column(Integer, ForeignKey('users.id'))
 
-    # book = relationship('User')
+    # book = relationship('Book')
     # bid = Column(Integer, ForeignKey('books.id'))
 
-    def is_yourself_gift(self, uid):
-        return self.uid == uid
+    @declared_attr
+    def user(cls):
+        return relationship('User')
 
-    @property
-    def book(self):
-        fisher_book = FisherBook()
-        fisher_book.search_by_isbn(self.isbn)
-        return fisher_book.first
+    @declared_attr
+    def uid(cls):
+        return Column(Integer, ForeignKey('users.id'))
+
+    @declared_attr
+    def book(cls):
+        return relationship('Book')
+
+    @declared_attr
+    def bid(cls):
+        return Column(Integer, ForeignKey('books.id'))
 
     @classmethod
-    def get_book_gifts(cls, isbn, uid=None):
+    def get_book_goods(cls, bid, uid=None):
         if uid is not None:
-            return cls.query.filter_by(uid=uid, isbn=isbn, launched=False).all()
-        return cls.query.filter_by(isbn=isbn, launched=False).all()
+            return cls.query.filter_by(uid=uid, bid=bid, launched=False).all()
+        return cls.query.filter_by(bid=bid, launched=False).all()
+
+    @classmethod
+    def get_user_goods(cls, uid=None):
+        return cls.query.filter_by(uid=uid, launched=False).order_by(desc(cls.create_time)).all()
+
+    @staticmethod
+    def get_goods_counts(target_cls, isbn_lst):
+        count_lst = db.session.query(func.count(target_cls.id), target_cls.isbn).filter(
+            target_cls.launched==False, target_cls.isbn.in_(isbn_lst), target_cls.status==True
+        ).group_by(target_cls.isbn).all()
+
+        return [EachGoodsCount(element[0], element[1]) for element in count_lst]
+
+    @classmethod
+    def save_goods(cls, check_cls, isbn, bid, uid):
+        if check_cls.query.filter_by(bid=bid, uid=uid, launched=False).first():
+            if check_cls.__name__ == Gift.__name__:
+                flash('这本书已经在你的赠送清单中')
+            else:
+                flash('这本书已经在你的心愿清单中')
+        else:
+            goods = cls.query.filter_by(use_base=True, bid=bid, uid=uid, launched=False).first()
+            if goods:
+                goods.change_status()
+            else:
+                goods = cls()
+                goods.isbn = isbn
+                goods.bid = bid
+                goods.uid = uid
+            with db.auto_commit():
+                if check_cls.__name__ == Gift.__name__:
+                    current_user.beans += current_app.config['BEANS_UPLOAD_ONE_BOOK']
+                db.session.add(goods)
+
+
+class Gift(Goods):
+    __tablename__ = 'gifts'
 
     @classmethod
     def recent(cls):
-        return cls.query.filter_by(launched=False).group_by(cls.isbn, cls.id).order_by(desc(cls.create_time)).limit(
+        return cls.query.filter_by(launched=False).group_by(cls.id).order_by(desc(cls.create_time)).limit(
             current_app.config['RECENT_BOOK_COUNT']).distinct().all()
 
-    @classmethod
-    def get_user_gifts(cls, uid):
-        return cls.query.filter_by(uid=uid, launched=False).order_by(desc(cls.create_time)).all()
 
-    @classmethod
-    def get_wish_counts(cls, isbn_lst):
-        count_lst = db.session.query(func.count(Wish.id), Wish.isbn).filter(
-            Wish.launched == False, Wish.isbn.in_(isbn_lst), Wish.status == 1).group_by(Wish.isbn).all()
-
-        return [EachGiftWishCount(element[0], element[1]) for element in count_lst]
-
-
-class Wish(Base):
+class Wish(Goods):
     __tablename__ = 'wishes'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    launched = Column(Boolean, default=False)
-    user = relationship('User')
-    uid = Column(Integer, ForeignKey('users.id'))
-    # 目前都是请求的api，数据库中并没有值，所以直接用isbn来关联，而不是外键
-    isbn = Column(String(15), nullable=False)
-
-    # book = relationship('User')
-    # bid = Column(Integer, ForeignKey('books.id'))
-
-    @property
-    def book(self):
-        fisher_book = FisherBook()
-        fisher_book.search_by_isbn(self.isbn)
-        return fisher_book.first
-
-    @classmethod
-    def get_book_wishes(cls, isbn, uid=None):
-        if uid is not None:
-            return cls.query.filter_by(uid=uid, isbn=isbn, launched=False).all()
-        return cls.query.filter_by(isbn=isbn, launched=False).all()
-
-    @classmethod
-    def get_user_wishes(cls, uid):
-        return cls.query.filter_by(uid=uid, launched=False).order_by(desc(cls.create_time)).all()
-
-    @classmethod
-    def get_gift_counts(cls, isbn_lst):
-        count_lst = db.session.query(func.count(Gift.id), Gift.isbn).filter(
-            Gift.launched == False, Gift.isbn.in_(isbn_lst), Gift.status == 1).group_by(Gift.isbn).all()
-
-        return [EachGiftWishCount(element[0], element[1]) for element in count_lst]
 
 
 class Drift(Base):

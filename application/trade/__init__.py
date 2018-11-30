@@ -1,6 +1,6 @@
 from flask import Blueprint
 
 
-trade_blueprint = Blueprint('trade', __name__)
+trade_bp = Blueprint('trade', __name__)
 
 from . import views

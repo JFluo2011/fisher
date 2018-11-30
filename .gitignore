@@ -14,5 +14,8 @@ supervisord.conf.d/
 script.py
 local_security.py
 
+# db
+migrations/
+
 # log
 logs/

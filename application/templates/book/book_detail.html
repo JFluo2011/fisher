@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block head %}
     {{ super() }}
-    <link rel="stylesheet" href="{{ url_for('static', filename='3rd/ui/remodal.css')}}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='3rd/ui/remodal-default-theme.css')}}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/book-detail.css')}}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='3rd/ui/remodal.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='3rd/ui/remodal-default-theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/book-detail.css') }}">
 {% endblock %}
 {% block content %}
     {{ super() }}
@@ -47,7 +47,7 @@
                 {% if wishes.total or gifts.total %}
                     <div class="color-count">
                         <span>{{ wishes.total }}人想要 / </span>
-                        <span>{{ gifts.total}}人可赠送</span>
+                        <span>{{ gifts.total }}人可赠送</span>
                     </div>
                 {% endif %}
             </div>
@@ -69,11 +69,15 @@
             </div>
         {% elif has_in_wishes %}
             <div class="col-md-3">
-                <span class="bg-info">已添加至心愿清单</span>
+                <a class="bg-info" href="{{ url_for('trade.save_to_wishes', isbn=book.isbn) }}">
+                    已添加至心愿清单
+                </a>
             </div>
         {% else %}
             <div class="col-md-3">
-                <span class="bg-info">已添加至赠送清单</span>
+                <a class="bg-info" href="{{ url_for('trade.save_to_gifts', isbn=book.isbn) }}">
+                    已添加至赠送清单
+                </a>
             </div>
         {% endif %}
     </div>
@@ -93,7 +97,7 @@
         {% for gift in gifts.trade_lst %}
             <div style="margin-top:30px;" class="row">
                 <div class="col-md-1">
-                    {{ gift.user_name }}
+                    {{ gift.nickname }}
                 </div>
                 <div class="col-md-2 description-font">
                     上传于{{ gift.date }}
@@ -113,7 +117,7 @@
         {% for wish in wishes.trade_lst %}
             <div style="margin-top:30px;" class="row">
                 <div class="col-md-1">
-                    {{ wish.user_name }}
+                    {{ wish.nickname }}
                 </div>
                 <div class="col-md-2 description-font">
                     上传于{{ wish.date }}

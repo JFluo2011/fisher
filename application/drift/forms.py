@@ -9,4 +9,3 @@ class DriftForm(Form):
     message = StringField('留言')
     address = StringField(
         '邮寄地址', validators=[Length(min=10, max=70, message='地址还不到10个字？请尽量填写详细地址'), DataRequired()])
-

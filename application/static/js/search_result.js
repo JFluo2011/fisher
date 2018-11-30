@@ -4,7 +4,7 @@ class Pagination {
     }
 
     onPageClick(event, page) {
-        window.location.href = $SCRIPT_ROOT + '/book/search?q=' + self.that.keyword + '&page=' + page
+        window.location.href = $SCRIPT_ROOT + '/book/search?keyword=' + self.that.keyword + '&page=' + page
     }
 
     pagination(total, visbleCount, startPage) {

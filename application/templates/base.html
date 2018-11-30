@@ -20,7 +20,7 @@
             <form class="form-inline" action="{{ url_for('book.search') }}" method="GET">
                 <div class="flex-vertical-center-height">
                     <div class="col-md-2">
-                        <img src="{{ url_for('static', filename='images/logo-yushu.png') }}"/>
+                        <img src="{{url_for('static', filename='images/logo-yushu.png')}}"/>
                     </div>
                     <div style="margin-left:30px;" class="col-md-8 input-group">
                         <input name="keyword" type="text" placeholder="ISBN、图书名称"
@@ -58,7 +58,7 @@
                     </a>
                 </div>
                 <div class="col-md-2">
-                    <a id="pending" href="{{ url_for('drift.pending') }}"
+                    <a id="pending" href="{{ url_for('trade.pending') }}"
                        class="flex-vertical-hor-center">
                         <img src="{{ url_for('static', filename='images/fish.png') }}"/>
                         <span>鱼漂</span>
@@ -107,6 +107,9 @@
     <script src="{{ url_for('static', filename='js/base.js') }}"></script>
     <script>
         $SCRIPT_ROOT = {{ request.script_root|tojson|safe }};
+        setTimeout(function () {
+            $('.alert-warning').fadeOut('fast');
+        }, 3000);
     </script>
 {% endblock %}
 

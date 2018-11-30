@@ -1,10 +1,12 @@
 from flask import Flask, render_template
 from flask_mail import Mail
+from flask_migrate import Migrate
 
-from application.models import db, login_manager
+from .models import db, login_manager
 
 
 mail = Mail()
+migrate = Migrate()
 
 
 def not_found(e):
@@ -20,10 +22,11 @@ def create_app():
 
     db.init_app(app)
     mail.init_app(app)
+    migrate.init_app(app, db)
 
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
-    login_manager.login_message = 'please login or register'
+    login_manager.login_message = '请登录或者注册帐号'
 
     with app.app_context():
         db.create_all(app=app)
@@ -33,15 +36,11 @@ def create_app():
 
 
 def register_blueprint(app):
-    from .book import book_blueprint
-    from .auth import auth_blueprint
-    from .trade import trade_blueprint
-    from .drift import drift_blueprint
-    app.register_blueprint(book_blueprint)
-    app.register_blueprint(auth_blueprint)
-    app.register_blueprint(trade_blueprint)
-    app.register_blueprint(drift_blueprint)
-
-
-
-
+    from .book import book_bp
+    from .auth import auth_bp
+    from .trade import trade_bp
+    from .drift import drift_bp
+    app.register_blueprint(book_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(trade_bp)
+    app.register_blueprint(drift_bp)

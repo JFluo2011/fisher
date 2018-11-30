@@ -1,96 +1,96 @@
-from flask import render_template, redirect, url_for, current_app, flash
-from flask_login import login_required, current_user
+from datetime import datetime
 
-from . import trade_blueprint as trade
-from ..models import db, Gift, Wish, Drift
+from flask import redirect, render_template, url_for, flash, current_app
+from flask_login import current_user, login_required
+
+from . import trade_bp as trade
+from ..models import db, Gift, Wish
+from ..spider.fisher_book import FisherBook
 from .viewmodel import MyTrades
-from ..libs.enums import PendingStatus
-from ..libs.email import send_mail
+
+
+@trade.route('/my_gifts')
+@login_required
+def my_gifts():
+    gifts = Gift.get_user_goods(current_user.id)
+    isbn_lst = [gift.isbn for gift in gifts]
+    goods_count = Gift.get_goods_counts(Wish, isbn_lst)
+    my_trades = MyTrades(gifts, goods_count)
+    return render_template('trade/my_gifts.html', gifts=my_trades.trades)
+
+
+@trade.route('/my_wishes')
+@login_required
+def my_wishes():
+    wishes = Wish.get_user_goods(current_user.id)
+    isbn_lst = [wish.isbn for wish in wishes]
+    goods_count = Wish.get_goods_counts(Gift, isbn_lst)
+    my_trades = MyTrades(wishes, goods_count)
+    return render_template('trade/my_wishes.html', wishes=my_trades.trades)
+
+
+@trade.route('/pending')
+def pending():
+    pass
 
 
 @trade.route('/gifts/book/<isbn>')
 @login_required
 def save_to_gifts(isbn):
-    if not current_user.can_save_to_list(isbn):
-        flash('this book already in your gift list or wish list')
+    book = FisherBook()
+    book.search(isbn)
+    if not book.first:
+        pass
     else:
-        with db.auto_commit():
-            gift = Gift()
-            gift.isbn = isbn
-            gift.uid = current_user.id
-            current_user.beans += current_app.config['BEANS_UPLOAD_ONE_BOOK']
-            db.session.add(gift)
+        Gift.save_goods(Wish, isbn, book.first.id, current_user.id)
 
     return redirect(url_for('book.book_detail', isbn=isbn))
-
-
-@trade.route('/my_wishes')
-def my_wishes():
-    uid = current_user.id
-    wishes_of_mine = Wish.get_user_wishes(uid)
-    isbn_lst = [wish.isbn for wish in wishes_of_mine]
-    gift_count_lst = Wish.get_gift_counts(isbn_lst)
-    my_wish_obj = MyTrades(wishes_of_mine, gift_count_lst)
-    return render_template('my_wish.html', wishes=my_wish_obj.trades)
-
-
-@trade.route('/my_gifts')
-def my_gifts():
-    uid = current_user.id
-    gifts_of_mine = Gift.get_user_gifts(uid)
-    isbn_lst = [gift.isbn for gift in gifts_of_mine]
-    wish_count_lst = Gift.get_wish_counts(isbn_lst)
-    my_gifts_obj = MyTrades(gifts_of_mine, wish_count_lst)
-    return render_template('my_gifts.html', gifts=my_gifts_obj.trades)
 
 
 @trade.route('/wish/book/<isbn>')
 @login_required
 def save_to_wishes(isbn):
-    if not current_user.can_save_to_list(isbn):
-        flash('this book already in your gift list or wish list')
+    book = FisherBook()
+    book.search(isbn)
+    if not book.first:
+        pass
     else:
-        with db.auto_commit():
-            wish = Wish()
-            wish.isbn = isbn
-            wish.uid = current_user.id
-            db.session.add(wish)
+        Wish.save_goods(Gift, isbn, book.first.id, current_user.id)
 
     return redirect(url_for('book.book_detail', isbn=isbn))
 
 
-@trade.route('/satisfy/wish/<int:wid>')
+@trade.route('/satisfy_wish')
+def satisfy_wish():
+    pass
+
+
+@trade.route('/gifts/redraw/<isbn>')
 @login_required
-def satisfy_wish(wid):
-    wish = Wish.query.get_or_404(wid)
-    gift = Gift.query.filter_by(uid=current_user.id, isbn=wish.isbn).first_or_404()
-    if not gift:
-        flash('你还没上传此书，请点击"加入到赠送清单"添加此书。添加前，请确保自己可以赠送此书')
+def redraw_from_gifts(isbn):
+    book = FisherBook()
+    book.search(isbn)
+    if not book.first:
+        pass
     else:
-        send_mail(wish.user.email, '有人想赠送你一本书', 'email/satisfy_wish.html', wish=wish, gift=gift)
-        flash('已向他/她发送了一封邮件，如果他/她愿意接受你的赠送，你将收到一个鱼漂')
-
-    return redirect(url_for('book.book_detail', isbn=wish.isbn))
-
-
-@trade.route('/gifts/<gid>/redraw')
-def redraw_from_gifts(gid):
-    gift = Gift.query.filter_by(id=gid, launched=False).first_or_404()
-    drift = Drift.query.filter_by(gift_id=gid, pending=PendingStatus.Waiting).first_or_404()
-    if drift is not None:
-        flash('这个礼物正处于交易状态，请先前往鱼漂完成交易')
-    else:
+        gift = Gift.query.filter_by(isbn=isbn).first_or_404()
         with db.auto_commit():
-            current_user.beans -= current_user.config['BEANS_UPLOAD_ONE_BOOK']
+            current_user.beans -= current_app.config['BEANS_UPLOAD_ONE_BOOK']
             gift.delete()
 
     return redirect(url_for('trade.my_gifts'))
 
 
-@trade.route('/wish/book/<isbn>/redraw')
-def redraw_from_wish(isbn):
-    wish = Wish.query.filter_by(isbn=isbn, launched=False).first_or_404()
-    with db.auto_commit():
-        wish.delete()
+@trade.route('/wishes/redraw/<isbn>')
+@login_required
+def redraw_from_wishes(isbn):
+    book = FisherBook()
+    book.search(isbn)
+    if not book.first:
+        pass
+    else:
+        wish = Wish.query.filter_by(isbn=isbn).first_or_404()
+        with db.auto_commit():
+            wish.delete()
 
     return redirect(url_for('trade.my_wishes'))
