@@ -5,7 +5,7 @@ from collections import namedtuple
 from flask import current_app, flash
 from sqlalchemy.ext.declarative import declared_attr
 from flask_sqlalchemy import SQLAlchemy, BaseQuery
-from sqlalchemy import Column, Integer, String, SmallInteger, TEXT, Boolean, Float, ForeignKey, desc, func
+from sqlalchemy import Column, Integer, String, SmallInteger, TEXT, Boolean, Float, ForeignKey, desc, func, Enum
 from sqlalchemy.orm import relationship
 from flask_login import UserMixin, LoginManager, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -48,28 +48,26 @@ class Base(db.Model):
     def __init__(self):
         self.create_time = int(datetime.now().timestamp())
 
-    def change_status(self):
-        self.status = not self.status
-        if self.status:
-            self.create_time = int(datetime.now().timestamp())
-            flash('添加到清单成功')
-        else:
-            flash('取消成功')
-
     @property
     def create_datetime(self):
         if self.create_time:
             return datetime.fromtimestamp(self.create_time)
 
     def delete(self):
-        self.status = False
+        with db.auto_commit():
+            self.status = False
+
+    def restore(self):
+        with db.auto_commit():
+            self.status = True
+            self.create_time = int(datetime.now().timestamp())
 
 
 class Book(Base):
     __tablename__ = 'books'
     id = Column(Integer, primary_key=True, nullable=False)
-    title = Column(String(50), unique=True, nullable=False)
-    # summary = Column(String(1000))
+    title = Column(String(50), nullable=False)
+    # title = Column(String(50), unique=True, nullable=False)
     summary = Column(TEXT)
     author = Column(String(100), default='佚名')
     publisher = Column(String(50))
@@ -83,7 +81,7 @@ class Book(Base):
     def __init__(self, book):
         super().__init__()
         self.id = book['id']
-        self.title = book['title']
+        self.title = book['title'][:50]
         self.author = '、'.join(book['author'])
         self.binding = book['binding']
         self.publisher = book['publisher']
@@ -170,11 +168,14 @@ class User(UserMixin, Base):
         with db.auto_commit():
             self.confirmed = True
 
+    def can_send_drift(self):
+        return self.beans >= 1
+
 
 class Goods(Base):
     __abstract__ = True
     launched = Column(Boolean, default=False)
-    isbn = Column(String(15), nullable=False, unique=True)
+    isbn = Column(String(15), nullable=False)
     # user = relationship('User')
     # uid = Column(Integer, ForeignKey('users.id'))
 
@@ -197,6 +198,11 @@ class Goods(Base):
     def bid(cls):
         return Column(Integer, ForeignKey('books.id'))
 
+    def change_status(self):
+        self.status = not self.status
+        if self.status:
+            self.create_time = int(datetime.now().timestamp())
+
     @classmethod
     def get_book_goods(cls, bid, uid=None):
         if uid is not None:
@@ -216,25 +222,24 @@ class Goods(Base):
         return [EachGoodsCount(element[0], element[1]) for element in count_lst]
 
     @classmethod
-    def save_goods(cls, check_cls, isbn, bid, uid):
-        if check_cls.query.filter_by(bid=bid, uid=uid, launched=False).first():
-            if check_cls.__name__ == Gift.__name__:
-                flash('这本书已经在你的赠送清单中')
-            else:
-                flash('这本书已经在你的心愿清单中')
+    def add(cls, isbn, bid, uid):
+        with db.auto_commit():
+            goods = cls()
+            goods.isbn = isbn
+            goods.bid = bid
+            goods.uid = uid
+            db.session.add(goods)
+
+    @classmethod
+    def save_goods(cls, isbn, bid, uid):
+        goods = cls.query.filter_by(use_base=True, bid=bid, uid=uid, launched=False).first()
+
+        if goods and goods.status:
+            goods.delete()
+        elif goods and (not goods.status):
+            goods.restore()
         else:
-            goods = cls.query.filter_by(use_base=True, bid=bid, uid=uid, launched=False).first()
-            if goods:
-                goods.change_status()
-            else:
-                goods = cls()
-                goods.isbn = isbn
-                goods.bid = bid
-                goods.uid = uid
-            with db.auto_commit():
-                if check_cls.__name__ == Gift.__name__:
-                    current_user.beans += current_app.config['BEANS_UPLOAD_ONE_BOOK']
-                db.session.add(goods)
+            goods.add(isbn, bid, uid)
 
 
 class Gift(Goods):
@@ -245,13 +250,37 @@ class Gift(Goods):
         return cls.query.filter_by(launched=False).group_by(cls.id).order_by(desc(cls.create_time)).limit(
             current_app.config['RECENT_BOOK_COUNT']).distinct().all()
 
+    def is_yourself_gift(self, uid):
+        return self.uid == uid
+
+    def delete(self):
+        with db.auto_commit():
+            super().delete()
+            self.user.beans -= current_app.config['BEANS_UPLOAD_ONE_BOOK']
+
+    def restore(self):
+        with db.auto_commit():
+            self.status = True
+            self.create_time = int(datetime.now().timestamp())
+            self.user.beans += current_app.config['BEANS_UPLOAD_ONE_BOOK']
+
+    @classmethod
+    def add(cls, isbn, bid, uid):
+        with db.auto_commit():
+            goods = cls()
+            goods.isbn = isbn
+            goods.bid = bid
+            goods.uid = uid
+            db.session.add(goods)
+            current_user.beans += current_app.config['BEANS_UPLOAD_ONE_BOOK']
+
 
 class Wish(Goods):
     __tablename__ = 'wishes'
 
 
 class Drift(Base):
-    id = Column(Integer, primary_key=True)
+    __tablename__ = 'drifts'
 
     # 邮寄信息
     recipient_name = Column(String(20), nullable=False)
@@ -274,15 +303,16 @@ class Drift(Base):
     gift_id = Column(Integer)
     presenter_nickname = Column(String(20))
 
-    _pending = Column('pending', SmallInteger, default=1)
+    # _pending = Column('pending', SmallInteger, default=1)
+    pending = Column('pending', Enum(PendingStatus))
 
-    @property
-    def pending(self):
-        return PendingStatus(self._pending)
-
-    @pending.setter
-    def pending(self, status):
-        self._pending = status.value
+    # @property
+    # def pending(self):
+    #     return PendingStatus(self._pending)
+    #
+    # @pending.setter
+    # def pending(self, status):
+    #     self._pending = status.value
 
 
 @login_manager.user_loader

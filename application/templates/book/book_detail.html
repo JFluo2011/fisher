@@ -124,7 +124,7 @@
                 </div>
                 <div class="col-md-2">
                     <a class="btn-normal"
-                       href="{{ url_for('trade.satisfy_wish', wid=wish.id, isbn=[book.isbn]) }}">向他赠送此书</a>
+                       href="{{ url_for('drift.satisfy_wish', wid=wish.id) }}">向他赠送此书</a>
                 </div>
             </div>
         {% endfor %}

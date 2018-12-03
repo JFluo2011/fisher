@@ -28,7 +28,7 @@
                             <span id="isbn">{{ gift.book.isbn }}</span>
                         </div>
                         <a class="link-normal"
-                           href="{{ url_for('trade.redraw_from_gifts', isbn=gift.book.isbn) }}">
+                           href="{{ url_for('trade.redraw_from_gifts', isbn=gift.isbn) }}">
                             撤销
                         </a>
                     </div>
@@ -36,6 +36,7 @@
                         {% if gift.trades_count %}
                             <a href="{{ url_for('book.book_detail', isbn=gift.book.isbn) }}">
                                 <span class="bg-info">{{ gift.trades_count }}人想要</span>
+
                             </a>
                         {% endif %}
                     </div>

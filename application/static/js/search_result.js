@@ -23,19 +23,19 @@ class Pagination {
     }
 
     initForSearch() {
-        var page = getQueryString('page')
+        let page = getQueryString('page');
         if (!page) {
             page = 1
         }
         else{
             page = parseInt(page)
         }
-        self.that.keyword = $('#keyword').text()
-        var total = $('#total').text()
-        total = Math.floor(parseInt(total) / 15) + 1
+        self.that.keyword = $('#keyword').text();
+        let total = $('#total').text();
+        total = Math.floor(parseInt(total) / 10) + 1;
         self.that.pagination(total, 6, page)
     }
 }
 
-new Pagination().initForSearch()
+new Pagination().initForSearch();
 

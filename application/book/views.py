@@ -4,9 +4,9 @@ from flask_login import current_user
 from . import book_bp as book
 from .forms import SearchForm
 from ..spider.fisher_book import FisherBook
-from .viewmodel import BookCollection
+from .viewmodels import BookCollection
 from ..models import Gift, Wish
-from ..trade.viewmodel import Trades
+from ..trade.viewmodels import Trades
 
 
 @book.route('/index')
